@@ -20,11 +20,8 @@
 #include "main.h"
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
 int _write(int file,char *ptr,int len)
 {
   int i=0;
@@ -32,57 +29,78 @@ for(i=0;i<len;i++)
   ITM_SendChar((*ptr++));
 return len;
 }
+/* USER CODE END Includes */
+
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef struct Neo6M_GpsData
+typedef struct gpsdata
 {
 	double time;
-	double latitude;
-	double longitude;
-	double Knots;
-	double Date;
+	float latitude;
+	float longitude;
+	int Date;
 	char N_OR_S;
 	char E_OR_W;
 	int fix;
 	char Data[750];
 	char buffer[100];
-	char location[100];
-	//UART_HandleTypeDef UartPort;
-}Neo6M_GpsData;
+	char rmc_buffer[100];
+}gpsdata;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define Min_To_Degree  0.01666666667
+#define Sec_To_Degree	 0.000277777778
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define Min_To_Degree  0.01666666667
-#define Sec_To_Degree	 0.000277777778
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart4;
+UART_HandleTypeDef huart5;
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-char rx_data[60],tx_data[50],*ptr;
-int Flag=0;
-Neo6M_GpsData NEO_GPS;
+char json_str[50];
+gpsdata gps;
+//int hr,min,sec;
+int dd,mm,yy;
+int flag=0;
+int GMT=+530;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_UART4_Init(void);
+static void MX_UART5_Init(void);
+static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
-void Get_GpsData(Neo6M_GpsData* GpsData);
-static void NEO_GPS_Location(Neo6M_GpsData* GpsData);
+void gpsData(gpsdata* data);
+static void gpslocation_extraction(gpsdata* data);
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+/*void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    // Handle received data
+    //gpsData(&gps);
+	//printf("call back\n");
+	flag=1;
+    // Restart UART receive
+    HAL_UART_Receive_IT(&huart2, gps.Data, sizeof(gps.Data));
+    //gpsData(&gps);
+}*/
 /* USER CODE END 0 */
 
 /**
@@ -113,9 +131,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_UART4_Init();
+  MX_UART5_Init();
+  MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_USART3_UART_Init();
+  //HAL_UART_Receive_IT(&huart2, gps.Data, sizeof(gps.Data));
   /* USER CODE BEGIN 2 */
-
+ // HAL_UART_Receive_IT(&huart2, gps.Data, sizeof(gps.Data));
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -123,27 +146,14 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	      if(HAL_UART_Receive(&huart2,(uint8_t*)NEO_GPS.Data,700,HAL_MAX_DELAY))
-	      {
-	    	  Get_GpsData(&NEO_GPS);
-	      }
-       	  /*HAL_UART_Receive(&huart2, rx_data,sizeof(rx_data), 1000);
-	 	  printf("received string %s\n",rx_data);
-	 	  //HAL_Delay(1000);
-	 	  ptr=strstr(rx_data,"GPGGA");
+    // printf("in main\n");
+   printf("in loop\n");
+     if(HAL_UART_Receive(&huart3,gps.Data,sizeof(gps.Data),1000)){
 
-	 	  if(ptr!=NULL)
-	 	  {
-	 		//uint8_t hi[10];
-	 		//strcpy(rx_data,hi);
-
-	 		//for(int i=0;rx_data[i]!='\0')
-	 	     HAL_UART_Transmit(&huart2, rx_data, sizeof(rx_data), 100);
-	 	  	HAL_Delay(1000);
-	 	  	printf("transmit to serial monitor\n");
-	 	  }
-
-	 		  memset(rx_data,0,sizeof(rx_data)); */
+     	printf("%s\n", gps.Data);
+     	 gpsData(&gps);
+     	// HAL_Delay(1000);
+     }
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -194,6 +204,111 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief UART4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART4_Init(void)
+{
+
+  /* USER CODE BEGIN UART4_Init 0 */
+
+  /* USER CODE END UART4_Init 0 */
+
+  /* USER CODE BEGIN UART4_Init 1 */
+
+  /* USER CODE END UART4_Init 1 */
+  huart4.Instance = UART4;
+  huart4.Init.BaudRate = 9600;
+  huart4.Init.WordLength = UART_WORDLENGTH_8B;
+  huart4.Init.StopBits = UART_STOPBITS_1;
+  huart4.Init.Parity = UART_PARITY_NONE;
+  huart4.Init.Mode = UART_MODE_TX_RX;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart4.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart4.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART4_Init 2 */
+
+  /* USER CODE END UART4_Init 2 */
+
+}
+
+/**
+  * @brief UART5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART5_Init(void)
+{
+
+  /* USER CODE BEGIN UART5_Init 0 */
+
+  /* USER CODE END UART5_Init 0 */
+
+  /* USER CODE BEGIN UART5_Init 1 */
+
+  /* USER CODE END UART5_Init 1 */
+  huart5.Instance = UART5;
+  huart5.Init.BaudRate = 9600;
+  huart5.Init.WordLength = UART_WORDLENGTH_8B;
+  huart5.Init.StopBits = UART_STOPBITS_1;
+  huart5.Init.Parity = UART_PARITY_NONE;
+  huart5.Init.Mode = UART_MODE_TX_RX;
+  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart5.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART5_Init 2 */
+
+  /* USER CODE END UART5_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -229,6 +344,41 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 9600;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -241,70 +391,138 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
-void Get_GpsData(Neo6M_GpsData* GpsData)
+/*void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	char *P;
+    // Handle received data
+    //gpsData(&gps);
+//	flag=1;
+
+    // Restart UART receive
+    HAL_UART_Receive_IT(&huart2, gps.Data, sizeof(gps.Data));
+    gpsData(&gps);
+}*/
+/* USER CODE BEGIN 4 */
+void gpsData(gpsdata* data)
+{
+	char *P,*Q;
 	int n;
-			//HAL_UART_Receive(&GpsData->UartPort,(uint8_t*)GpsData->Data,700,HAL_MAX_DELAY);
-	P=strstr(GpsData->Data,"GPGGA");
+	printf("in func\n");
+	//memset(data->Data,0,sizeof(data->Data));
+	//HAL_UART_Receive(&huart3, data->Data, sizeof(data->Data),5000);
+	//printf("string %s\n",data->Data);
+	//printf("flag set\n");
+	//HAL_UART_Receive_IT(&huart2, data->Data, sizeof(data->Data));
+	//printf("%s\n",data->Data);
+	P=strstr(data->Data,"GNGGA");
+	Q=strstr(data->Data,"GNRMC");
+	//printf("string found\n");
 	if(*P=='G')
 	{
 	   n=0;
-	   while(*(P+n)!='\n')
+	   while(*(P+n)!='*')
 	   {
-		   GpsData->location[n]=*(P+n);
+		   data->buffer[n]=*(P+n);
 		   n++;
 	   }
-		sprintf(GpsData->buffer,"%s\r\n\n",GpsData->location);
-		sscanf(GpsData->buffer,"GPGGA,%lf,%lf,%c,%lf,%c,%d,,,,,,,*",&GpsData->time,&GpsData->latitude,&GpsData->N_OR_S,&GpsData->longitude,&GpsData->E_OR_W,&GpsData->fix);
-		if(GpsData->fix==1||GpsData->fix==2||GpsData->fix==6)
+	    printf("GGA string is %s", data->buffer);
+		//sprintf(data->buffer,"%s",data->location);
+		sscanf(data->buffer,"GNGGA,%lf,%f,%c,%f,%c,%d,",&data->time,&data->latitude,&data->N_OR_S,&data->longitude,&data->E_OR_W,&data->fix);
+		if(*Q=='G')
+				{
+				   n=0;
+				   while(*(Q+n)!='*')
+				   {
+					   data->rmc_buffer[n]=*(Q+n);
+					   n++;
+				   }
+				}
+				    printf("RMC string is %s", data->rmc_buffer);
+					//sprintf(data->buffer,"%s",data->location);
+					sscanf(data->rmc_buffer,"GNRMC,%*lf,%*c,%*f,%*c,%*f,%*c,%*f,%*f,%d,",&data->Date);
+					printf("date is %d\n",data->Date);
+
+		if(data->fix==1)
 		{
-			NEO_GPS_Location(GpsData);
+			printf("valid fix\n");
+			gpslocation_extraction(data);
 		}
 		else
 		{
 			printf("invalid signal no fix\n");
+			printf("GPS fix quality is zero. Unable to obtain accurate location.\n");
 		}
 	 }
+
 	else
 	{
 		printf("no data\n");
 	}
+
 }
 
-static void NEO_GPS_Location(Neo6M_GpsData* GpsData)
+static void gpslocation_extraction(gpsdata* data)
 {
 	double Deg_Val=0.0,Min_Val=0.0,Sec_Val=0.0,lon=0.0,lat=0.0;
-
-	lon=GpsData->longitude;
-	lat=GpsData->latitude;
-	if((GpsData->E_OR_W=='E' && GpsData->N_OR_S=='S')||((GpsData->E_OR_W=='W' && GpsData->N_OR_S=='N')))
+	int hr,min,sec;
+	lon=data->longitude;
+	lat=data->latitude;
+	if((data->E_OR_W=='E' || data->N_OR_S=='S')||(data->E_OR_W=='W' || data->N_OR_S=='N'))
 	{
 		Deg_Val=(int)(lon/100);
 		Min_Val=(int)(lon-(Deg_Val*100));
 		Sec_Val=((lon-(Deg_Val*100))-Min_Val)*100;
-		GpsData->longitude=Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree);
-		printf("longitude is %f\n",GpsData->longitude);
+		data->longitude=(Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree));
+		printf("longitude : %f\n",data->longitude);
 
 		Deg_Val=(int)((lat/100));
 		Min_Val=(int)(lat-(Deg_Val*100));
 		Sec_Val=((lat-(Deg_Val*100))-Min_Val)*10;
-		GpsData->latitude=(Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree))*-1;
-		printf("latitude is %f\n",GpsData->latitude);
-
+		data->latitude=(Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree));
+		printf("latitude : %f\n",data->latitude);
 	}
-}
+	    /*hr=(int)(data->time)/10000;
+	    min=(int)(data->time-(hr*10000))/100;
+	    sec=(int)(data->time-((hr*10000)+(min*100)));*/
 
-/* USER CODE BEGIN 4 */
+
+	    hr=(int)((data->time)/10000);
+	   	min=(int)(data->time-(hr*10000))/100;
+	   	sec=(int)(data->time-((hr*10000)+(min*100)));
+	   	int ist_hr = hr + 5;  // 5 hours difference
+	   	int ist_min = min + 30;  // 30 minutes difference
+        if(ist_hr>=24)
+        {
+        	ist_hr-=24;
+        }
+	   	// Adjusting for overflow
+	   	if (ist_min >= 60) {
+	   	    ist_hr++;
+	   	    ist_min -= 60;
+	   	}
+	    //sprintf(time_buf, "%02d:%02d:%02d",hr,min,sec);
+	    dd=(data->Date)/10000;
+	    mm=(data->Date-(dd*10000))/100;
+	    yy=(data->Date-((dd*10000)+(mm*100)));
+	    printf("time: %02d:%02d:%02d\n",ist_hr,ist_min,sec);
+	    printf("date: %02d/%02d/%02d\n",dd,mm,yy);
+	//	sprintf(json_str,"{\n\"latitude\":%f,\n \"longitude\":%f,\n \"time\": \%02d:%02d:%02d,\n \date\: \%02d/%02d/%02d\n}",data->latitude, data->longitude,ist_hr,ist_min,sec,dd,mm,yy);
+		//printf("json format is %s\n",json_str);
+	//	memset(data->Data,0,sizeof(data->Data));
+		//memset(data->buffer,0,sizeof(data->buffer));
+		//memset(data->rmc_buffer,0,sizeof(data->rmc_buffer));
+}
 
 /* USER CODE END 4 */
 
 /**
-  * @brief  Period elapsed callback in non blocking mode
+  * @brief  Period elaps
+  * ed callback in non blocking mode
   * @note   This function is called  when TIM2 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
