@@ -20,8 +20,7 @@
 #include "main.h"
 #include <stdio.h>
 #include <string.h>
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
+#include <stdbool.h>
 int _write(int file,char *ptr,int len)
 {
   int i=0;
@@ -29,6 +28,9 @@ for(i=0;i<len;i++)
   ITM_SendChar((*ptr++));
 return len;
 }
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,12 +48,13 @@ typedef struct gpsdata
 	char buffer[100];
 	char rmc_buffer[100];
 }gpsdata;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define Min_To_Degree  0.01666666667
-#define Sec_To_Degree	 0.000277777778
+#define Sec_To_Degree  0.000277777778
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -67,12 +70,13 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-char json_str[50];
+char gps_info[100],gps_comp_info[100];
+char str[100];
 gpsdata gps;
-//int hr,min,sec;
+gpsdata gps_rcv;
 int dd,mm,yy;
 int flag=0;
-int GMT=+530;
+int GMT=530;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,22 +89,169 @@ static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void gpsData(gpsdata* data);
-static void gpslocation_extraction(gpsdata* data);
+void gpslocation_extraction(gpsdata* data);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart1)
+    {
+        // Process the received data
+    	printf("data is %s\n",gps.Data);
+        gpsData(&gps);
+    }
+}
+
+static int gps_init(void)
+{
+	if(HAL_UART_Receive(&huart5,(uint8_t *)gps.Data,sizeof(gps.Data),1000))
+	{
+	      printf("%s\n",gps.Data);
+	       gpsData(&gps);
+	       return 1;
+	}
+	else
+	{
+
+		printf("Uart data not received\n");
+		return 0;
+	}
+}
+void gpsData(gpsdata *data)
+{
+	char *gga_ptr,*rmc_ptr;
+	int n;
+	printf("in func\n");
+	//memset(data->Data,0,sizeof(data->Data));
+	//HAL_UART_Receive(&huart3, data->Data, sizeof(data->Data),5000);
+	//printf("string %s\n",data->Data);
+	gga_ptr=strstr(data->Data,"GNGGA");
+	rmc_ptr=strstr(data->Data,"GNRMC");
+	//printf("string found\n");
+	if(gga_ptr!=NULL)
+	{
+	if(*gga_ptr=='G')
+	{
+	   n=0;
+	   while(*(gga_ptr+n)!='*')
+	   {
+		   data->buffer[n]=*(gga_ptr+n);
+		   n++;
+	   }
+	    printf("GGA string is %s", data->buffer);
+	//	sprintf(data->buffer,"%s",data->buffer);
+		sscanf(data->buffer,"GNGGA,%lf,%f,%c,%f,%c,%d,",&data->time,&data->latitude,&data->N_OR_S,&data->longitude,&data->E_OR_W,&data->fix);
+	}
+	else
+		{
+			printf("GGA string not found\n");
+		}
+
+	}
+	else
+	{
+		printf("GGA string not found\n");
+	}
+
+	if(rmc_ptr!=NULL)
+		{
+		if(*rmc_ptr=='G')
+				{
+				   n=0;
+				   while(*(rmc_ptr+n)!='*')
+				   {
+					   data->rmc_buffer[n]=*(rmc_ptr+n);
+					   n++;
+				   }
+				   printf("RMC string is %s", data->rmc_buffer);
+				   					//sprintf(data->buffer,"%s",data->location);
+				   					sscanf(data->rmc_buffer,"GNRMC,%*lf,%*c,%*f,%*c,%*f,%*c,%*f,%*f,%d,",&data->Date);
+				   					printf("date is %d\n",data->Date);
+				}
+
+
+	else
+	{
+		printf("RMC string not found\n");
+	}
+		}
+	else
+		{
+			printf("RMC string not found\n");
+		}
+
+
+					//memset(data->Data,0,sizeof(data->Data));
+
+
+		if(data->fix==1)
+		{
+			printf("valid fix\n");
+			gpslocation_extraction(data);
+		}
+		else
+		{
+			sprintf(gps_info, "%s","invalid signal no fix, Unable to obtain accurate location.\n");
+		}
+
+}
+
+void gpslocation_extraction(gpsdata* data)
+{
+	double Deg_Val=0.0,Min_Val=0.0,Sec_Val=0.0,lon=0.0,lat=0.0;
+	int hr,min,sec;
+	lon=data->longitude;
+	lat=data->latitude;
+	if((data->E_OR_W=='E' || data->N_OR_S=='S')||(data->E_OR_W=='W' || data->N_OR_S=='N'))
+	{
+		Deg_Val=(int)(lon/100);
+		Min_Val=(int)(lon-(Deg_Val*100));
+		Sec_Val=((lon-(Deg_Val*100))-Min_Val)*100;
+		data->longitude=(Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree));
+		printf("longitude : %f\n",data->longitude);
+
+		Deg_Val=(int)((lat/100));
+		Min_Val=(int)(lat-(Deg_Val*100));
+		Sec_Val=((lat-(Deg_Val*100))-Min_Val)*10;
+		data->latitude=(Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree));
+		printf("latitude : %f\n",data->latitude);
+	}
+	    /*hr=(int)(data->time)/10000;
+	    min=(int)(data->time-(hr*10000))/100;
+	    sec=(int)(data->time-((hr*10000)+(min*100)));*/
+
+
+	    hr=(int)((data->time)/10000);
+	   	min=(int)(data->time-(hr*10000))/100;
+	   	sec=(int)(data->time-((hr*10000)+(min*100)));
+	   	int ist_hr = hr + 5;  // 5 hours difference
+	   	int ist_min = min + 30;  // 30 minutes difference
+        if(ist_hr>=24)
+        {
+        	ist_hr-=24;
+        }
+	   	// Adjusting for overflow
+	   	if (ist_min >= 60) {
+	   	    ist_hr++;
+	   	    ist_min -= 60;
+	   	}
+	    //sprintf(time_buf, "%02d:%02d:%02d",hr,min,sec);
+	    dd=(data->Date)/10000;
+	    mm=(data->Date-(dd*10000))/100;
+	    yy=(data->Date-((dd*10000)+(mm*100)));
+	    printf("time: %02d:%02d:%02d\n",ist_hr,ist_min,sec);
+	    printf("date: %02d/%02d/%02d\n",dd,mm,yy);
+		sprintf(gps_info,"latitude\":%f,\"longitude\":%f,\"time\": \%02d:%02d:%02d,\date\: \%02d/%02d/%02d",data->latitude, data->longitude,ist_hr,ist_min,sec,dd,mm,yy);
+		//printf("json format is %s\n",json_str);
+	   	//memset(data->Data,0,sizeof(data->Data));
+		//memset(data->buffer,0,sizeof(data->buffer));
+		//memset(data->rmc_buffer,0,sizeof(data->rmc_buffer));
+}
 //void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/*void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-    // Handle received data
-    //gpsData(&gps);
-	//printf("call back\n");
-	flag=1;
-    // Restart UART receive
-    HAL_UART_Receive_IT(&huart2, gps.Data, sizeof(gps.Data));
-    //gpsData(&gps);
-}*/
+
+
 /* USER CODE END 0 */
 
 /**
@@ -136,6 +287,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
+
   //HAL_UART_Receive_IT(&huart2, gps.Data, sizeof(gps.Data));
   /* USER CODE BEGIN 2 */
  // HAL_UART_Receive_IT(&huart2, gps.Data, sizeof(gps.Data));
@@ -143,17 +295,20 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+//gps_init();
+  //s_init();
+
   while (1)
   {
+	  printf("in loop\n");
     /* USER CODE END WHILE */
-    // printf("in main\n");
-   printf("in loop\n");
-     if(HAL_UART_Receive(&huart3,gps.Data,sizeof(gps.Data),1000)){
-
-     	printf("%s\n", gps.Data);
-     	 gpsData(&gps);
-     	// HAL_Delay(1000);
-     }
+	   // memset(gps.Data,0,750);
+    	//HAL_UART_Receive(&huart3,(uint8_t *)gps.Data,750,2000);
+    	//printf("%s\n",gps.Data);
+    	//gpsData(&gps);
+	   // gps_init();
+	  HAL_UART_Receive_IT(&huart1, (uint8_t *)gps.Data, sizeof(gps.Data));
+        printf("%s\n",gps_info);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -408,115 +563,7 @@ static void MX_GPIO_Init(void)
     gpsData(&gps);
 }*/
 /* USER CODE BEGIN 4 */
-void gpsData(gpsdata* data)
-{
-	char *P,*Q;
-	int n;
-	printf("in func\n");
-	//memset(data->Data,0,sizeof(data->Data));
-	//HAL_UART_Receive(&huart3, data->Data, sizeof(data->Data),5000);
-	//printf("string %s\n",data->Data);
-	//printf("flag set\n");
-	//HAL_UART_Receive_IT(&huart2, data->Data, sizeof(data->Data));
-	//printf("%s\n",data->Data);
-	P=strstr(data->Data,"GNGGA");
-	Q=strstr(data->Data,"GNRMC");
-	//printf("string found\n");
-	if(*P=='G')
-	{
-	   n=0;
-	   while(*(P+n)!='*')
-	   {
-		   data->buffer[n]=*(P+n);
-		   n++;
-	   }
-	    printf("GGA string is %s", data->buffer);
-		//sprintf(data->buffer,"%s",data->location);
-		sscanf(data->buffer,"GNGGA,%lf,%f,%c,%f,%c,%d,",&data->time,&data->latitude,&data->N_OR_S,&data->longitude,&data->E_OR_W,&data->fix);
-		if(*Q=='G')
-				{
-				   n=0;
-				   while(*(Q+n)!='*')
-				   {
-					   data->rmc_buffer[n]=*(Q+n);
-					   n++;
-				   }
-				}
-				    printf("RMC string is %s", data->rmc_buffer);
-					//sprintf(data->buffer,"%s",data->location);
-					sscanf(data->rmc_buffer,"GNRMC,%*lf,%*c,%*f,%*c,%*f,%*c,%*f,%*f,%d,",&data->Date);
-					printf("date is %d\n",data->Date);
 
-		if(data->fix==1)
-		{
-			printf("valid fix\n");
-			gpslocation_extraction(data);
-		}
-		else
-		{
-			printf("invalid signal no fix\n");
-			printf("GPS fix quality is zero. Unable to obtain accurate location.\n");
-		}
-	 }
-
-	else
-	{
-		printf("no data\n");
-	}
-
-}
-
-static void gpslocation_extraction(gpsdata* data)
-{
-	double Deg_Val=0.0,Min_Val=0.0,Sec_Val=0.0,lon=0.0,lat=0.0;
-	int hr,min,sec;
-	lon=data->longitude;
-	lat=data->latitude;
-	if((data->E_OR_W=='E' || data->N_OR_S=='S')||(data->E_OR_W=='W' || data->N_OR_S=='N'))
-	{
-		Deg_Val=(int)(lon/100);
-		Min_Val=(int)(lon-(Deg_Val*100));
-		Sec_Val=((lon-(Deg_Val*100))-Min_Val)*100;
-		data->longitude=(Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree));
-		printf("longitude : %f\n",data->longitude);
-
-		Deg_Val=(int)((lat/100));
-		Min_Val=(int)(lat-(Deg_Val*100));
-		Sec_Val=((lat-(Deg_Val*100))-Min_Val)*10;
-		data->latitude=(Deg_Val+(Min_Val*Min_To_Degree)+(Sec_Val*Sec_To_Degree));
-		printf("latitude : %f\n",data->latitude);
-	}
-	    /*hr=(int)(data->time)/10000;
-	    min=(int)(data->time-(hr*10000))/100;
-	    sec=(int)(data->time-((hr*10000)+(min*100)));*/
-
-
-	    hr=(int)((data->time)/10000);
-	   	min=(int)(data->time-(hr*10000))/100;
-	   	sec=(int)(data->time-((hr*10000)+(min*100)));
-	   	int ist_hr = hr + 5;  // 5 hours difference
-	   	int ist_min = min + 30;  // 30 minutes difference
-        if(ist_hr>=24)
-        {
-        	ist_hr-=24;
-        }
-	   	// Adjusting for overflow
-	   	if (ist_min >= 60) {
-	   	    ist_hr++;
-	   	    ist_min -= 60;
-	   	}
-	    //sprintf(time_buf, "%02d:%02d:%02d",hr,min,sec);
-	    dd=(data->Date)/10000;
-	    mm=(data->Date-(dd*10000))/100;
-	    yy=(data->Date-((dd*10000)+(mm*100)));
-	    printf("time: %02d:%02d:%02d\n",ist_hr,ist_min,sec);
-	    printf("date: %02d/%02d/%02d\n",dd,mm,yy);
-	//	sprintf(json_str,"{\n\"latitude\":%f,\n \"longitude\":%f,\n \"time\": \%02d:%02d:%02d,\n \date\: \%02d/%02d/%02d\n}",data->latitude, data->longitude,ist_hr,ist_min,sec,dd,mm,yy);
-		//printf("json format is %s\n",json_str);
-	//	memset(data->Data,0,sizeof(data->Data));
-		//memset(data->buffer,0,sizeof(data->buffer));
-		//memset(data->rmc_buffer,0,sizeof(data->rmc_buffer));
-}
 
 /* USER CODE END 4 */
 
