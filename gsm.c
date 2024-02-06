@@ -425,7 +425,7 @@ void tcp_ip_protocol()
 
 					 break;
 				case 2:
-							a=send_at("AT+NETOPEN?\r\n", "opened");
+							a=send_at("AT+NETOPEN\r\n", "opened");
 							if(a==1)
 							{
 								substate1=3;
