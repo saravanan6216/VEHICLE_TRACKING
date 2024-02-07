@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include "INT_Flash.h"
 int _write(int file,char *ptr,int len)
 {
   int i=0;
@@ -308,7 +309,14 @@ int main(void)
     	//gpsData(&gps);
 	   // gps_init();
 	  HAL_UART_Receive_IT(&huart1, (uint8_t *)gps.Data, sizeof(gps.Data));
+	  HAL_Delay(5000);
         printf("%s\n",gps_info);
+        printf("erase started\n");
+        eraseFlashPage(FLASH_START_ADDRESS);
+        printf("erased\n");
+        writeStringToFlash(FLASH_START_ADDRESS,gps_info);
+        printf("write done\n");
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
