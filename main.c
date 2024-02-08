@@ -19,15 +19,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stdio.h"
-
-#define FLASH_START_ADDRESS 0x08080000
-
-void writeDataToFlash(uint64_t address, uint64_t* data, uint64_t dataSize);
-void readDataFromFlash(uint64_t address, uint64_t* buffer, uint64_t dataSize);
-void eraseFlashPage(uint64_t pageAddress);
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "INT_Flash.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -37,6 +31,7 @@ void eraseFlashPage(uint64_t pageAddress);
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define FLASH_START_ADDRESS 0x08080000
 
 /* USER CODE END PD */
 
@@ -53,6 +48,7 @@ void eraseFlashPage(uint64_t pageAddress);
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -89,27 +85,23 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+  MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
-      uint64_t dataToWrite[] = {0x12345678, 0xABCD1234, 0xDEADBEEF};
-      uint64_t readData[3];
-      printf("Writing data to flash\n");
-      // Write data to flash
-      writeDataToFlash(FLASH_START_ADDRESS, dataToWrite, sizeof(dataToWrite) / sizeof(uint64_t));
-      printf("Data written successfully\n");
+  char readData[86];
+    char dataToWrite[] ="{\n  \"Date\":070224,\n  \"Time\": 120145,\n  \"Latitude\": 1727.405,\n  \"Longitude\": 7822.510\n}";
+int len = strlen(dataToWrite);
+    /************** Erase a flash page *************/
+    eraseFlashPage(FLASH_START_ADDRESS);
+    HAL_Delay(1000);
 
-          printf("Reading data from flash\n");
-      // Read data from flash
-      readDataFromFlash(FLASH_START_ADDRESS, readData, sizeof(dataToWrite) / sizeof(uint32_t));
-
-      printf("Data read successfully\n");
-
-          printf("Erasing flash page"
-        		  "\n");
-      // Erase a flash page
-      eraseFlashPage(FLASH_START_ADDRESS);
-      printf("Flash page erased successfully!\n");
-      // Perform verification
-      // Compare readData with original dataToWrite to verify if write/read/erase operations are successful
+int i;
+    for(i=0;i<20;i++){
+    /************* Write data to flash *************/
+    writeStringToFlash(FLASH_START_ADDRESS+88*i,dataToWrite);
+    HAL_Delay(1000);
+    readDataFromFlash(FLASH_START_ADDRESS+88*i, readData, sizeof(dataToWrite) / sizeof(char));
+    printf("%s\n",readData);
+    }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -117,45 +109,13 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+	  /**************  Read data from flash ************/
+//	     readDataFromFlash(FLASH_START_ADDRESS, readData, sizeof(dataToWrite) / sizeof(char));
+//   printf("%s\n",readData);
+	     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
-}
-void writeDataToFlash(uint64_t address, uint64_t* data, uint64_t dataSize) {
-    HAL_FLASH_Unlock();
 
-    for (uint32_t i = 0; i < dataSize; i++) {
-        HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, address, data[i]);
-        address += 8; // Move to the next word (32 bits)
-    }
-
-    HAL_FLASH_Lock();
-}
-
-
-void readDataFromFlash(uint64_t address, uint64_t* buffer, uint64_t dataSize) {
-    for (uint32_t i = 0; i < dataSize; i++) {
-        buffer[i] = *(uint64_t*)address;
-        address += 8; // Move to the next word (64 bits)
-    }
-}
-
-
-void eraseFlashPage(uint64_t pageAddress) {
-    FLASH_EraseInitTypeDef eraseConfig;
-    uint32_t pageError;
-
-    eraseConfig.TypeErase   = FLASH_TYPEERASE_PAGES;
-    eraseConfig.Page        = pageAddress/FLASH_PAGE_SIZE; // Specify the page number, not the address
-    eraseConfig.Banks       = FLASH_BANK_2; // Specify the bank
-    eraseConfig.NbPages     = 1; // Number of pages to erase
-
-    HAL_FLASH_Unlock();
-
-    HAL_FLASHEx_Erase(&eraseConfig, &pageError);
-
-    HAL_FLASH_Lock();
 }
 
 /**
@@ -205,6 +165,23 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+/* USER CODE BEGIN MX_GPIO_Init_1 */
+/* USER CODE END MX_GPIO_Init_1 */
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+/* USER CODE BEGIN MX_GPIO_Init_2 */
+/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
