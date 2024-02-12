@@ -39,7 +39,9 @@ char data[100]="TEAMC_SERVER";
 char gps_info[100];
 uint8_t inc;
 uint8_t state,substate,count=0;
-int mem=0;
+int mem_loc=0;
+char flash_buf[100];
+uint8_t flag=0;
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -116,8 +118,9 @@ int main(void)
   	  gsm_condition();
   	  tcp_ip_protocol();
   	printf("Erasing flash\n");
-  		 	   		  eraseFlashPage(FLASH_START_ADDRESS);
-  		 	   		  printf("Erased\n");
+  	eraseFlashPage(FLASH_START_ADDRESS);
+  	//eraseAllFlashPages();
+  	printf("Erased\n");
   	 printf("gps_init_started\n");
   /* USER CODE END 2 */
 
@@ -141,10 +144,17 @@ int main(void)
 	 	   	   case 0:
 	 	   	   {
 	 	   		   // signal check
+	 	   		 int a=send_at("ATE0\r\n", "OK");
 	 	   		   if(signal_qualityy())
 	 	   		   {
 	 	   			   printf("signal checked\n");
 	 	   			  // substate=1; changing code
+	 	   			  if(flag==1)
+	 	   			     {
+	 	   				  gsm_condition(); // at commands checking
+	 	   			     	flag=0;
+	 	   			     }
+
 	 	   			   substate=1;
 	 	   		   }
 	 	   		   else
@@ -170,12 +180,33 @@ int main(void)
 	 	   		   	   	   	 if(tcp_server_open(gps_info))
 	 	   				     {
 	 	   				    	 printf("gps_info send data %s\n",gps_info);
+	 	   				    	// memset(gps_info,'\0',100);						//add
 	 	   				    	 printf("server is connected and send the data to server\n");
 	 	   				    	 state=0;
 	 	   				    	 //connected and send data
+
+	 	   				    	 //sending stored flash data
+	 	   				    if(mem_loc!=0)
+	 	   				      {
+	 	   				        printf("sending FLASH data to SERVER\n");
+	 	   				        for(int pos=0;pos<mem_loc;pos++)
+	 	   				        {
+	 	   				    		readDataFromFlash(FLASH_START_ADDRESS+56*pos, flash_buf, 56);
+	 	   				    		printf("READ %s\n",flash_buf);
+	 	   				    		tcp_server_open(flash_buf);
+	 	   				    		if(pos==mem_loc-1)
+	 	   				    		{
+	 	   				    		printf("Erasing flash memory");
+	 	   				    		eraseFlashPage(FLASH_START_ADDRESS);
+	 	   				    		mem_loc=0;
+	 	   				    		printf("ERASED\n");
+	 	   				    		}
+	 	   				    	}
+	 	   				      }
 	 	   				     }
-	 	   				     else
+	 	   				    else
 	 	   				     {
+
 	 	   				    	 substate=2;
 	 	   				    	//flash
 	 	   				     }
@@ -187,16 +218,14 @@ int main(void)
 	 	   		   // Flash
 
 	 	   		  printf("flash storing....\n");
-	 	   		  //printf("Erasing flash\n");
-	 	   		  //eraseFlashPage(FLASH_START_ADDRESS);
-	 	   		  //printf("Erased\n");
 	 	   		  printf("WRITE flash storing....\n");
-	 	   		  writeStringToFlash(FLASH_START_ADDRESS+88*mem, gps_info);
+	 	   		  writeStringToFlash(FLASH_START_ADDRESS+56*mem_loc, gps_info);
 	 	   		  printf("Write over....\n");
-	 	   		  mem++;
-	 	   		   state=0;
-
-	 	   		  HAL_Delay(5000);
+	 	   		  mem_loc++;
+	 	   		  state=0;
+	 	   		  HAL_Delay(1000);
+	 	   		  flag=1; // checking for go back gsm command flag
+	 	   		// memset(gps_info,'\0',100); //add
 	 	   	   }break;
 	 	   }
 	 	  }
